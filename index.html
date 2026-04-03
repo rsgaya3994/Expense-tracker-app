@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Expense Tracker</title>
+
+<style>
+  body {
+    margin:0;
+    font-family: Arial;
+    background: linear-gradient(135deg, #F5F5F5, #FFCEE3);
+    display:flex;
+    justify-content:center;
+  }
+
+  .app {
+    max-width:420px;
+    width:100%;
+    background:#F5F5F5;
+    border-radius:16px;
+    overflow:hidden;
+    box-shadow:0 8px 20px rgba(0,0,0,0.1);
+  }
+
+  .header {
+    background: linear-gradient(135deg, #021A54, #0a2a7a);
+    color:white;
+    padding:15px;
+  }
+
+  .balance { display:flex; justify-content:space-between; margin-top:5px; }
+
+  .month-nav {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px;
+  }
+
+  .month-nav button {
+    background:#FF85BB;
+    color:white;
+    border:none;
+    padding:8px 14px;
+    border-radius:8px;
+    font-weight:bold;
+  }
+
+  #monthLabel {
+    font-weight:bold;
+    color:#021A54;
+    padding-left: 28px;
+    padding-right: 28px;
+    font-size:18px;
+  }
+
+  .calendar-header {
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    text-align:center;
+    color:#021A54;
+    font-weight:bold;
+  }
+
+  .calendar {
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:6px;
+    padding:10px;
+  }
+
+  .day {
+    padding:10px;
+    text-align:center;
+    border-radius:10px;
+    background:#FFCEE3;
+    cursor:pointer;
+    transition:0.2s;
+  }
+
+  .day:hover { background:#FF85BB; color:white; }
+
+  .hasData {
+    background:#FF85BB;
+    color:white;
+  }
+
+  .today {
+    border:2px solid #021A54;
+  }
+
+  .overlay {
+    position:fixed;
+    top:0; left:0;
+    width:100%; height:100%;
+    background:rgba(0,0,0,0.3);
+    display:none;
+  }
+
+  .popup {
+    position:fixed;
+    top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    background:linear-gradient(135deg, #FFFFFF, #FFCEE3);
+    width:90%; max-width:380px;
+    border-radius:16px;
+    padding:15px;
+    display:none;
+    z-index:10;
+    box-shadow:0 10px 30px rgba(0,0,0,0.3);
+  }
+
+  input, select {
+    width:90%;
+    padding:10px;
+    margin-top:8px;
+    border-radius:10px;
+    border:1px solid #ccc;
+    background:#F5F5F5;
+  }
+
+  button {
+    width:100%;
+    padding:10px;
+    margin-top:8px;
+    border-radius:10px;
+    border:none;
+    background:#FF85BB;
+    color:white;
+    font-weight:bold;
+  }
+
+  table {
+    width:100%;
+    margin-top:10px;
+    border-collapse:collapse;
+    background:#F5F5F5;
+    border-radius:10px;
+    overflow:hidden;
+  }
+
+  td {
+    padding:8px;
+    border-bottom:1px solid #ddd;
+    text-align:center;
+  }
+
+  td button {
+    width:auto;
+    padding:5px 8px;
+    margin:2px;
+    background:#FFCEE3;
+    border-radius:6px;
+  }
+</style>
+</head>
+
+<body>
+
+<div class="app">
+  <div class="header">
+    <h3>Expense Tracker</h3>
+
+    <div class="balance">
+      <div>Cash ₹<span id="cash"></span></div>
+      <div>GPay ₹<span id="gpay"></span></div>
+    </div>
+
+    <button onclick="editBalance()">Edit Balance</button>
+
+    <!-- ✅ NEW -->
+    <button onclick="exportData()">Backup Data</button>
+    <input type="file" id="fileInput" onchange="importData(event)">
+  </div>
+
+  <div class="month-nav">
+    <button onclick="changeMonth(-1)">⬅</button>
+    <div id="monthLabel"></div>
+    <button onclick="changeMonth(1)">➡</button>
+  </div>
+
+  <div class="calendar-header">
+    <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+  </div>
+
+  <div class="calendar" id="calendar"></div>
+</div>
+
+<div class="overlay" id="overlay" onclick="closePopup()"></div>
+
+<div class="popup" id="popup">
+  <h4 id="dateTitle"></h4>
+  <input id="item" placeholder="Item">
+  <input id="amount" type="number" placeholder="Amount">
+  <select id="mode"><option>Cash</option><option>GPay</option></select>
+  <button onclick="addExpense()">Add</button>
+  <button onclick="closePopup()">Close</button>
+
+  <table><tbody id="list"></tbody></table>
+</div>
+
+<script>
+let cash = parseFloat(localStorage.getItem('cash')) || 1000;
+let gpay = parseFloat(localStorage.getItem('gpay')) || 2000;
+let data = JSON.parse(localStorage.getItem('data')) || {};
+
+let current = new Date();
+let selectedDate = "";
+
+function save(){
+  localStorage.setItem('data', JSON.stringify(data));
+  localStorage.setItem('cash', cash);
+  localStorage.setItem('gpay', gpay);
+}
+
+function renderCalendar(){
+  const cal=document.getElementById('calendar'); cal.innerHTML='';
+  const y=current.getFullYear(); const m=current.getMonth();
+
+  document.getElementById('monthLabel').innerText =
+    current.toLocaleString('default',{month:'long',year:'numeric'});
+
+  const first=new Date(y,m,1).getDay();
+  const days=new Date(y,m+1,0).getDate();
+
+  for(let i=0;i<first;i++) cal.appendChild(document.createElement('div'));
+
+  for(let d=1;d<=days;d++){
+    const div=document.createElement('div');
+    const key=`${y}-${m+1}-${d}`;
+
+    div.className='day';
+    div.innerText=d;
+
+    if(data[key] && data[key].length>0) div.classList.add('hasData');
+
+    const today=new Date();
+    if(d===today.getDate() && m===today.getMonth() && y===today.getFullYear())
+      div.classList.add('today');
+
+    div.onclick=()=>openDay(key);
+    cal.appendChild(div);
+  }
+}
+
+function changeMonth(dir){
+  current.setMonth(current.getMonth()+dir);
+  renderCalendar();
+}
+
+function openDay(date){
+  selectedDate=date;
+  popup.style.display='block';
+  overlay.style.display='block';
+  dateTitle.innerText=date;
+  renderList();
+}
+
+function closePopup(){
+  popup.style.display='none';
+  overlay.style.display='none';
+}
+
+function addExpense(){
+  const item=itemInput.value;
+  const amt=parseFloat(amountInput.value);
+  const mode=modeSelect.value;
+
+  if(!item||!amt) return;
+
+  if(!data[selectedDate]) data[selectedDate]=[];
+  data[selectedDate].push({item,amt,mode});
+
+  if(mode==='Cash') cash-=amt; else gpay-=amt;
+
+  save(); update(); renderList(); renderCalendar();
+
+  itemInput.value=''; amountInput.value='';
+}
+
+function renderList(){
+  list.innerHTML='';
+  (data[selectedDate]||[]).forEach((e,i)=>{
+    const row=document.createElement('tr');
+    row.innerHTML=`<td>${e.item}</td><td>₹${e.amt}</td><td>${e.mode}</td>
+    <td><button onclick="editExp(${i})">✏️</button>
+    <button onclick="delExp(${i})">❌</button></td>`;
+    list.appendChild(row);
+  });
+}
+
+function delExp(i){
+  const e=data[selectedDate][i];
+  if(e.mode==='Cash') cash+=e.amt; else gpay+=e.amt;
+  data[selectedDate].splice(i,1);
+
+  if(data[selectedDate].length===0) delete data[selectedDate];
+
+  save(); update(); renderList(); renderCalendar();
+}
+
+function editExp(i){
+  const e=data[selectedDate][i];
+  const ni=prompt('Item',e.item);
+  const na=parseFloat(prompt('Amount',e.amt));
+  const nm=prompt('Mode Cash/GPay',e.mode);
+
+  if(!ni||!na) return;
+
+  if(e.mode==='Cash') cash+=e.amt; else gpay+=e.amt;
+  if(nm==='Cash') cash-=na; else gpay-=na;
+
+  data[selectedDate][i]={item:ni,amt:na,mode:nm};
+  save(); update(); renderList(); renderCalendar();
+}
+
+function editBalance(){
+  cash=parseFloat(prompt('Cash',cash));
+  gpay=parseFloat(prompt('GPay',gpay));
+  save(); update();
+}
+
+function update(){
+  cashEl.innerText=cash;
+  gpayEl.innerText=gpay;
+}
+
+/* ✅ BACKUP */
+function exportData(){
+  const backup={cash,gpay,data};
+  const blob=new Blob([JSON.stringify(backup)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download="expense-backup.json";
+  a.click();
+}
+
+/* ✅ RESTORE */
+function importData(event){
+  const file=event.target.files[0];
+  if(!file) return;
+
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const content=JSON.parse(e.target.result);
+
+    cash=content.cash||0;
+    gpay=content.gpay||0;
+    data=content.data||{};
+
+    save(); update(); renderCalendar();
+    alert("Data restored!");
+  };
+  reader.readAsText(file);
+}
+
+const itemInput=document.getElementById('item');
+const amountInput=document.getElementById('amount');
+const modeSelect=document.getElementById('mode');
+const popup=document.getElementById('popup');
+const overlay=document.getElementById('overlay');
+const list=document.getElementById('list');
+const dateTitle=document.getElementById('dateTitle');
+const cashEl=document.getElementById('cash');
+const gpayEl=document.getElementById('gpay');
+
+renderCalendar(); update();
+</script>
+
+</body>
+</html>
